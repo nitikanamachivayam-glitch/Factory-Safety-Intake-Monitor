@@ -1,0 +1,381 @@
+# ============================================
+# FACTORY SAFETY INTAKE MONITOR
+# R Shiny Web Application
+# ============================================
+
+library(shiny)
+
+# -----------------------------
+# Initial Safety Data
+# -----------------------------
+
+safety_data <- data.frame(
+  Hazard = c(
+    "Low", "Medium", "High", "Low",
+    "Critical", "Medium", "High", "Low",
+    "Medium", "Critical"
+  ),
+  stringsAsFactors = FALSE
+)
+
+# Ordered hazard levels
+hazard_levels <- c("Low", "Medium", "High", "Critical")
+
+# -----------------------------
+# User Interface
+# -----------------------------
+
+ui <- fluidPage(
+  
+  titlePanel("🏭 Factory Safety Intake Monitor"),
+  
+  sidebarLayout(
+    
+    # LEFT SIDE
+    sidebarPanel(
+      
+      h3("Enter Hazard Code"),
+      
+      selectInput(
+        inputId = "hazard",
+        label = "Select Hazard Level:",
+        choices = c(
+          "Select Hazard Level",
+          hazard_levels
+        ),
+        selected = "Select Hazard Level"
+      ),
+      
+      br(),
+      
+      actionButton(
+        inputId = "submit",
+        label = "Submit Safety Log",
+        class = "btn-primary"
+      ),
+      
+      br(),
+      br(),
+      
+      actionButton(
+        inputId = "clear",
+        label = "Clear Last Entry"
+      ),
+      
+      br(),
+      br(),
+      
+      h4("Valid Hazard Levels"),
+      tags$ul(
+        tags$li("Low"),
+        tags$li("Medium"),
+        tags$li("High"),
+        tags$li("Critical")
+      )
+    ),
+    
+    # RIGHT SIDE
+    mainPanel(
+      
+      h2("Current Safety Status"),
+      
+      fluidRow(
+        
+        column(
+          3,
+          wellPanel(
+            h4("Low"),
+            h2(textOutput("low_count"))
+          )
+        ),
+        
+        column(
+          3,
+          wellPanel(
+            h4("Medium"),
+            h2(textOutput("medium_count"))
+          )
+        ),
+        
+        column(
+          3,
+          wellPanel(
+            h4("High"),
+            h2(textOutput("high_count"))
+          )
+        ),
+        
+        column(
+          3,
+          wellPanel(
+            h4("Critical"),
+            h2(textOutput("critical_count"))
+          )
+        )
+      ),
+      
+      hr(),
+      
+      h3("Safety Message"),
+      
+      uiOutput("message"),
+      
+      hr(),
+      
+      h3("Safety Level Distribution"),
+      
+      plotOutput(
+        outputId = "safety_plot",
+        height = "400px"
+      ),
+      
+      hr(),
+      
+      h3("Recent Safety Logs"),
+      
+      tableOutput("safety_table")
+    )
+  )
+)
+
+# -----------------------------
+# SERVER
+# -----------------------------
+
+server <- function(input, output, session) {
+  
+  # Reactive safety data
+  safety_records <- reactiveVal(safety_data)
+  
+  # -----------------------------
+  # Submit Safety Log
+  # -----------------------------
+  
+  observeEvent(input$submit, {
+    
+    selected_hazard <- input$hazard
+    
+    # Validation
+    if (selected_hazard == "Select Hazard Level" ||
+        !(selected_hazard %in% hazard_levels)) {
+      
+      showNotification(
+        "Error: Undefined Risk Level",
+        type = "error",
+        duration = 5
+      )
+      
+    } else {
+      
+      # Convert to ordered factor
+      new_record <- data.frame(
+        Hazard = factor(
+          selected_hazard,
+          levels = hazard_levels,
+          ordered = TRUE
+        )
+      )
+      
+      current_data <- safety_records()
+      
+      # Add new record
+      current_data <- rbind(
+        current_data,
+        data.frame(
+          Hazard = as.character(new_record$Hazard),
+          stringsAsFactors = FALSE
+        )
+      )
+      
+      safety_records(current_data)
+      
+      showNotification(
+        paste(
+          "Safety log added successfully:",
+          selected_hazard
+        ),
+        type = "message",
+        duration = 4
+      )
+    }
+  })
+  
+  # -----------------------------
+  # Clear Last Entry
+  # -----------------------------
+  
+  observeEvent(input$clear, {
+    
+    current_data <- safety_records()
+    
+    if (nrow(current_data) > 0) {
+      
+      current_data <- current_data[
+        -nrow(current_data),
+        ,
+        drop = FALSE
+      ]
+      
+      safety_records(current_data)
+      
+      showNotification(
+        "Last safety log removed.",
+        type = "warning",
+        duration = 3
+      )
+    }
+  })
+  
+  # -----------------------------
+  # Count Low
+  # -----------------------------
+  
+  output$low_count <- renderText({
+    
+    data <- safety_records()
+    
+    sum(data$Hazard == "Low")
+  })
+  
+  # -----------------------------
+  # Count Medium
+  # -----------------------------
+  
+  output$medium_count <- renderText({
+    
+    data <- safety_records()
+    
+    sum(data$Hazard == "Medium")
+  })
+  
+  # -----------------------------
+  # Count High
+  # -----------------------------
+  
+  output$high_count <- renderText({
+    
+    data <- safety_records()
+    
+    sum(data$Hazard == "High")
+  })
+  
+  # -----------------------------
+  # Count Critical
+  # -----------------------------
+  
+  output$critical_count <- renderText({
+    
+    data <- safety_records()
+    
+    sum(data$Hazard == "Critical")
+  })
+  
+  # -----------------------------
+  # Safety Message
+  # -----------------------------
+  
+  output$message <- renderUI({
+    
+    data <- safety_records()
+    
+    critical_count <- sum(data$Hazard == "Critical")
+    high_count <- sum(data$Hazard == "High")
+    
+    if (critical_count > 0) {
+      
+      div(
+        style = "background:#f8d7da;
+                 padding:15px;
+                 border-radius:8px;
+                 color:#842029;",
+        
+        strong("⚠️ Warning: "),
+        "Critical hazard records require immediate attention."
+      )
+      
+    } else if (high_count > 0) {
+      
+      div(
+        style = "background:#fff3cd;
+                 padding:15px;
+                 border-radius:8px;
+                 color:#664d03;",
+        
+        strong("⚠️ Attention: "),
+        "High-risk safety records are present."
+      )
+      
+    } else {
+      
+      div(
+        style = "background:#d1e7dd;
+                 padding:15px;
+                 border-radius:8px;
+                 color:#0f5132;",
+        
+        strong("✅ Safety Status: "),
+        "No high or critical hazards detected."
+      )
+    }
+  })
+  
+  # -----------------------------
+  # Safety Chart
+  # -----------------------------
+  
+  output$safety_plot <- renderPlot({
+    
+    data <- safety_records()
+    
+    counts <- table(
+      factor(
+        data$Hazard,
+        levels = hazard_levels,
+        ordered = TRUE
+      )
+    )
+    
+    barplot(
+      counts,
+      main = "Factory Hazard Level Distribution",
+      xlab = "Hazard Level",
+      ylab = "Number of Safety Logs",
+      col = c(
+        "green",
+        "gold",
+        "orange",
+        "red"
+      ),
+      border = "white"
+    )
+  })
+  
+  # -----------------------------
+  # Safety Table
+  # -----------------------------
+  
+  output$safety_table <- renderTable({
+    
+    data <- safety_records()
+    
+    data$Log_ID <- seq_len(nrow(data))
+    
+    data <- data[, c("Log_ID", "Hazard")]
+    
+    names(data) <- c(
+      "Log ID",
+      "Hazard Level"
+    )
+    
+    data
+  })
+}
+
+# -----------------------------
+# RUN APPLICATION
+# -----------------------------
+
+shinyApp(
+  ui = ui,
+  server = server
+)
